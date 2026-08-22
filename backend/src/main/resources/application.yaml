@@ -31,7 +31,7 @@ tinylink:
 
 logging:
   level:
-    com._early4coffee.tinylink: DEBUG
+    com.early4coffee.tinylink: DEBUG
     org.springframework.data.redis: DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
