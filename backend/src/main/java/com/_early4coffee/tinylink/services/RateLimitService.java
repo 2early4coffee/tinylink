@@ -1,10 +1,17 @@
 package com._early4coffee.tinylink.services;
 
 
+import com._early4coffee.tinylink.models.RateLimitData;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -14,7 +21,88 @@ public class RateLimitService {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
+    @Value("${tinylink.rate-limit.request-per-minute}")
+    private int requestPerMinute;
+
+    @Value("${tinylink.rate-limit.request-per-hour}")
+    private int requestPerHour;
+
+    private final ConcurrentHashMap<String, RateLimitData> rateLimitDataConcurrentHashMap = new ConcurrentHashMap<>();
+
+    private static final String REDIS_KEY_PREFIX = "ratelimit:";
+
     public boolean isAllowed(String clientIp) {
-        return false;
+        String redisKey = REDIS_KEY_PREFIX + clientIp;
+
+        LocalDateTime now = LocalDateTime.now();
+
+        RateLimitData data = getRateLimitDataFromRedis(redisKey);
+
+        if (data == null) {
+            data = rateLimitDataConcurrentHashMap.computeIfAbsent(clientIp, k -> RateLimitData.builder()
+                    .minuteCount(0)
+                    .hourCount(0)
+                    .minuteWindowStart(now)
+                    .hourWindowStart(now)
+                    .build());
+        }
+
+        if (isWithinMinuteWindow(data, now)) {
+            if (data.getMinuteCount() >= requestPerMinute) {
+                log.warn("Minute limit exceeded for {}", clientIp);
+                return false;
+            }
+        } else {
+            data.setMinuteCount(0);
+            data.setMinuteWindowStart(now);
+
+        }
+
+        if (isWithinHourWindow(data, now)) {
+            if (data.getHourCount() >= requestPerHour) {
+                log.warn("Hour limit exceeded for {}", clientIp);
+                return false;
+            }
+        } else {
+            data.setHourCount(0);
+            data.setHourWindowStart(now);
+
+        }
+
+        data.setMinuteCount(data.getMinuteCount() + 1);
+        data.setHourCount(data.getHourCount() + 1);
+
+        saveRateLimitDataToRedis(redisKey, data);
+
+        return true;
+    }
+
+    private boolean isWithinHourWindow(RateLimitData data, LocalDateTime now) {
+        return data.getHourWindowStart() != null && ChronoUnit.HOURS.between(
+                data.getHourWindowStart(), now
+        ) < 1;
+    }
+
+    private boolean isWithinMinuteWindow(RateLimitData data, LocalDateTime now) {
+        return data.getMinuteWindowStart() != null && ChronoUnit.MINUTES.between(
+                data.getMinuteWindowStart(), now
+        ) < 1;
+    }
+
+    private void saveRateLimitDataToRedis(String redisKey, RateLimitData data) {
+        try {
+            redisTemplate.opsForValue().set(redisKey, data, 1, TimeUnit.HOURS);
+        } catch (Exception e) {
+            log.warn("Failed to save rate limit data to Redis: {}", e.getMessage());
+        }
+    }
+
+    private RateLimitData getRateLimitDataFromRedis(String redisKey) {
+        try {
+            return (RateLimitData) redisTemplate.opsForValue().get(redisKey);
+        } catch (Exception e) {
+            log.error("Error retrieving rate limit data from Redis for key {}: {}", redisKey, e.getMessage());
+            return null;
+        }
     }
 }
