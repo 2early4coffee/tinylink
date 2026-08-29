@@ -5,15 +5,21 @@ import com._early4coffee.tinylink.dto.ShortenUrlRequest;
 import com._early4coffee.tinylink.models.ClickEvent;
 import com._early4coffee.tinylink.models.UrlData;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
-import lombok.Value;
+
+import org.springframework.beans.factory.annotation.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -22,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class UrlShortenerService {
     private final RedisTemplate<String, Object> redisTemplate;
 
-    private final Map<String, UrlData> urlMapping = new ConcurrentHashMap<>();
+    private final Map<String, UrlData> urlMappings = new ConcurrentHashMap<>();
 
     private final Map<String, List<ClickEvent>> clickAnalytics = new ConcurrentHashMap<>();
 
@@ -52,6 +58,45 @@ public class UrlShortenerService {
                 throw new IllegalArgumentException("Custom alias already exists" + shortCode);
             }
         }
+
+        UrlData urlData = UrlData.builder()
+                .originalUrl(request.getOriginalUrl())
+                .shortCode(shortCode)
+                .createdAt(java.time.LocalDateTime.now())
+                .expiresAt(request.getExpiresAt())
+                .clickCount(0)
+                .createdBy(clientIp)
+                .isActive(true)
+                .clickEvents(new ArrayList<>())
+                .build();
+
+        urlMappings.put(shortCode, urlData);
+        clickAnalytics.put(shortCode, new ArrayList<>());
+
+        cacheUrl(shortCode, request.getOriginalUrl());
+
+        log.info("Shortened URL created: {} -> {}", shortCode, request.getOriginalUrl());
+        return ShortenUrlRequest.builder()
+                .shortUrl(buildShortUrl(shortCode))
+                .shortCode(shortCode)
+                .originalUrl(request.getOriginalUrl())
+                .createdAt(urlData.getCreatedAt())
+                .expiresAt(urlData.getExpiresAt())
+                .build();
+    }
+
+    private Object buildShortUrl(String shortCode) {
+        String normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+        return normalizedBaseUrl + "/api/" + shortCode;
+    }
+
+    private void cacheUrl(String shortCode, String originalUrl) {
+        try {
+            redisTemplate.opsForValue().set("url" + shortCode, originalUrl, cacheTtlMinutes, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            log.warn("Failed to cache URL for {} : {}", shortCode, e.getMessage());
+        }
+
     }
 
     private String generateUniqueShortCode() {
@@ -61,6 +106,20 @@ public class UrlShortenerService {
                 return code;
             }
         }
-        throw new IllegalStateException("Failed to generate unique short code");
+        throw new RuntimeException("Failed to generate unique short code" + maxGenerationAttempt + "attempts");
+    }
+
+    private boolean shortCodeExists(String code) {
+        return urlMappings.containsKey(code);
+    }
+
+    private String generateRandomBase62() {
+
+        StringBuilder sb = new StringBuilder(shortCodeLength);
+        for (int i = 0; i < shortCodeLength; i++) {
+            int index = ThreadLocalRandom.current().nextInt(BASE_62_CHARS.length());
+            sb.append(BASE_62_CHARS.charAt(index));
+        }
+        return sb.toString();
     }
 }
