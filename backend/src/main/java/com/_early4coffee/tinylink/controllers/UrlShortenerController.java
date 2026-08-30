@@ -2,19 +2,20 @@ package com._early4coffee.tinylink.controllers;
 
 
 import com._early4coffee.tinylink.dto.ShortenUrlRequest;
+import com._early4coffee.tinylink.dto.ShortenUrlResponse;
 import com._early4coffee.tinylink.services.RateLimitService;
 import com._early4coffee.tinylink.services.UrlShortenerService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api")
@@ -32,7 +33,7 @@ public class UrlShortenerController {
     ) {
         String clientIp = getClientIp(httpRequest);
         if (!rateLimitService.isAllowed(clientIp)) {
-            return ResponseEntity.status(httpStatus.TOO_MANY_REQUESTS)
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                     .body(Map.of(
                             "error", "Rate limit exceeded",
                             "remainingRequests", rateLimitService.getRemainingRequests(clientIp),
@@ -41,11 +42,38 @@ public class UrlShortenerController {
         }
 
         try {
-            ShortenUrlRequest response = urlShortenerService.shortenUrl(request, clientIp);
+            ShortenUrlResponse response = urlShortenerService.shortenUrl(request, clientIp);
             return ResponseEntity.ok(response);
-        } catch () {
-
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Internal server error "));
         }
+
+    }
+
+    @GetMapping("/{shortCode}")
+    public ResponseEntity<Void> redirectToUrl(
+            @PathVariable String shortCode,
+            HttpServletRequest request,
+            HttpServletResponse response
+    ) {
+        String clientIp = getClientIp(request);
+        String userAgent = request.getHeader("User-Agent");
+        String referrer = request.getHeader("Referer");
+
+        Optional<String> originalUrl = urlShortenerService.getOriginalUrl(shortCode);
+
+        if (originalUrl.isPresent()) {
+            urlShortenerService.recordClick(shortCode, clientIp, userAgent, referrer);
+
+            response.setHeader("Location", originalUrl.get());
+            return ResponseEntity.status(HttpStatus.FOUND).build();
+        } else {
+            return ResponseEntity.notFound().build();
+        }
+
     }
 
     private String getClientIp(HttpServletRequest httpRequest) {
