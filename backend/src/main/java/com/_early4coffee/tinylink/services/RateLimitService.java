@@ -21,11 +21,11 @@ public class RateLimitService {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
-    @Value("${tinylink.rate-limit.request-per-minute}")
-    private int requestPerMinute;
+    @Value("${tinylink.rate-limit.requests-per-minute}")
+    private int requestsPerMinute;
 
-    @Value("${tinylink.rate-limit.request-per-hour}")
-    private int requestPerHour;
+    @Value("${tinylink.rate-limit.requests-per-hour}")
+    private int requestsPerHour;
 
     private final ConcurrentHashMap<String, RateLimitData> rateLimitDataConcurrentHashMap = new ConcurrentHashMap<>();
 
@@ -48,7 +48,7 @@ public class RateLimitService {
         }
 
         if (isWithinMinuteWindow(data, now)) {
-            if (data.getMinuteCount() >= requestPerMinute) {
+            if (data.getMinuteCount() >= requestsPerMinute) {
                 log.warn("Minute limit exceeded for {}", clientIp);
                 return false;
             }
@@ -59,7 +59,7 @@ public class RateLimitService {
         }
 
         if (isWithinHourWindow(data, now)) {
-            if (data.getHourCount() >= requestPerHour) {
+            if (data.getHourCount() >= requestsPerHour) {
                 log.warn("Hour limit exceeded for {}", clientIp);
                 return false;
             }
@@ -111,16 +111,16 @@ public class RateLimitService {
         RateLimitData data = getRateLimitDataFromRedis(redisKey);
 
         if (data == null) {
-            return requestPerMinute; // If no data, all requests are available
+            return requestsPerMinute; // If no data, all requests are available
         }
 
         LocalDateTime now = LocalDateTime.now();
 
         if (!isWithinMinuteWindow(data, now)) {
-            return requestPerMinute; // Reset if outside the minute window
+            return requestsPerMinute; // Reset if outside the minute window
         }
 
-        return Math.max(0, requestPerMinute - data.getMinuteCount());
+        return Math.max(0, requestsPerMinute - data.getMinuteCount());
     }
 
     public long getTimeUntilReset(String clientIp) {
@@ -132,13 +132,13 @@ public class RateLimitService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        if (data.getMinuteCount() >= requestPerMinute) {
+        if (data.getMinuteCount() >= requestsPerMinute) {
             LocalDateTime nextMinute = data.getMinuteWindowStart()
                     .plusMinutes(1);
             return ChronoUnit.SECONDS.between(now, nextMinute);
         }
 
-        if (data.getHourCount() >= requestPerHour) {
+        if (data.getHourCount() >= requestsPerHour) {
             LocalDateTime nextHour = data.getHourWindowStart()
                     .plusHours(1);
             return ChronoUnit.SECONDS.between(now, nextHour);
