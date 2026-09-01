@@ -2,6 +2,7 @@ package com._early4coffee.tinylink.services;
 
 import com._early4coffee.tinylink.dto.ShortenUrlRequest;
 import com._early4coffee.tinylink.dto.ShortenUrlResponse;
+import com._early4coffee.tinylink.dto.UrlStatsResponse;
 import com._early4coffee.tinylink.models.ClickEvent;
 import com._early4coffee.tinylink.models.UrlData;
 import lombok.RequiredArgsConstructor;
@@ -166,5 +167,25 @@ public class UrlShortenerService {
             clickAnalytics.get(shortCode).add(clickEvent);
             log.debug("Recorded click for short code: {}", shortCode);
         }
+    }
+
+    public Optional<UrlStatsResponse> getUrlStats(String shortCode) {
+        UrlData urlData = urlMappings.get(shortCode);
+
+        if(urlData == null){
+            return  Optional.empty();
+        }
+
+        return Optional.of(
+                UrlStatsResponse.builder()
+                        .shortCode(shortCode)
+                        .originalUrl(urlData.getOriginalUrl())
+                        .clickCount(urlData.getClickCount())
+                        .createdAt(urlData.getCreatedAt())
+                        .expiresAt(urlData.getExpiresAt())
+                        .isActive(urlData.isActive())
+                        .createdBy(urlData.getCreatedBy())
+                        .build()
+        );
     }
 }
