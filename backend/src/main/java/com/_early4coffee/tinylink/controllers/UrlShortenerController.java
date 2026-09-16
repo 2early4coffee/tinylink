@@ -3,6 +3,7 @@ package com._early4coffee.tinylink.controllers;
 
 import com._early4coffee.tinylink.dto.ShortenUrlRequest;
 import com._early4coffee.tinylink.dto.ShortenUrlResponse;
+import com._early4coffee.tinylink.dto.UrlAnalyticsResponse;
 import com._early4coffee.tinylink.dto.UrlStatsResponse;
 import com._early4coffee.tinylink.services.RateLimitService;
 import com._early4coffee.tinylink.services.UrlShortenerService;
@@ -87,6 +88,18 @@ public class UrlShortenerController {
           return ResponseEntity.status(HttpStatus.NOT_FOUND)
                   .body(Map.of("error", "Short code not found"));
       }
+    }
+
+    @GetMapping("/analytics/{shortCode}")
+    public ResponseEntity<?> getUrlAnalytics(@PathVariable String shortCode) {
+        Optional<UrlAnalyticsResponse> urlAnalytics = urlShortenerService.getUrlAnalytics(shortCode);
+
+        if (urlAnalytics.isPresent()) {
+            return ResponseEntity.ok(urlAnalytics.get());
+        } else {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "Short code not found"));
+        }
     }
 
     private String getClientIp(HttpServletRequest httpRequest) {

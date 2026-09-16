@@ -2,6 +2,7 @@ package com._early4coffee.tinylink.services;
 
 import com._early4coffee.tinylink.dto.ShortenUrlRequest;
 import com._early4coffee.tinylink.dto.ShortenUrlResponse;
+import com._early4coffee.tinylink.dto.UrlAnalyticsResponse;
 import com._early4coffee.tinylink.dto.UrlStatsResponse;
 import com._early4coffee.tinylink.models.ClickEvent;
 import com._early4coffee.tinylink.models.UrlData;
@@ -187,5 +188,8 @@ public class UrlShortenerService {
                         .createdBy(urlData.getCreatedBy())
                         .build()
         );
+    }
+
+    public Optional<UrlAnalyticsResponse> getUrlAnalytics(String shortCode) {
     }
 }
