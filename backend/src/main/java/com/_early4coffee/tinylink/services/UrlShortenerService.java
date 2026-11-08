@@ -256,4 +256,24 @@ public class UrlShortenerService {
             log.warn("Failed to delete cached URL for {} : {}", shortCode, e.getMessage());
         }
     }
+
+    public void cleanExpiredUrls() {
+        int cleanedCount = 0;
+
+        LocalDateTime now = LocalDateTime.now();
+
+        for (Map.Entry<String, UrlData> entry: urlMappings.entrySet()) {
+            UrlData urlData = entry.getValue();
+            if (urlData.getExpiresAt() != null && urlData.getExpiresAt().isBefore(now) && urlData.isActive()) {
+                urlData.setActive(false);
+                deleteCacheUrl(entry.getKey());
+                cleanedCount++;
+            }
+        }
+
+        if (cleanedCount > 0 ){
+            log.info("Cleaned up {} expired URLS ", cleanedCount);
+        }
+
+    }
 }
