@@ -1,6 +1,5 @@
 package com._early4coffee.tinylink.controllers;
 
-
 import com._early4coffee.tinylink.dto.ShortenUrlRequest;
 import com._early4coffee.tinylink.dto.ShortenUrlResponse;
 import com._early4coffee.tinylink.dto.UrlAnalyticsResponse;
@@ -23,7 +22,6 @@ import java.util.Optional;
 @RequestMapping("/api")
 @Slf4j
 @RequiredArgsConstructor
-
 public class UrlShortenerController {
     private final UrlShortenerService urlShortenerService;
     private final RateLimitService rateLimitService;
@@ -50,9 +48,8 @@ public class UrlShortenerController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Internal server error "));
+                    .body(Map.of("error", "Internal server error"));
         }
-
     }
 
     @GetMapping("/{shortCode}")
@@ -75,32 +72,44 @@ public class UrlShortenerController {
         } else {
             return ResponseEntity.notFound().build();
         }
-
     }
 
     @GetMapping("/stats/{shortCode}")
-    public ResponseEntity<?> getUrlStats (@PathVariable String shortCode){
-        Optional<UrlStatsResponse> urlStats = urlShortenerService.getUrlStats(shortCode);
+    public ResponseEntity<?> getUrlStats(@PathVariable String shortCode){
+        Optional<UrlStatsResponse> stats = urlShortenerService.getUrlStats(shortCode);
 
-      if ( urlStats.isPresent()) {
-          return ResponseEntity.ok(urlStats.get());
-      } else {
-          return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                  .body(Map.of("error", "Short code not found"));
-      }
+        if(stats.isPresent()){
+            return ResponseEntity.ok(stats.get());
+        }else{
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error","Short code not found"));
+        }
     }
 
     @GetMapping("/analytics/{shortCode}")
-    public ResponseEntity<?> getUrlAnalytics(@PathVariable String shortCode) {
-        Optional<UrlAnalyticsResponse> urlAnalytics = urlShortenerService.getUrlAnalytics(shortCode);
+    public ResponseEntity<?> getUrlAnalytics(@PathVariable String shortCode){
+        Optional<UrlAnalyticsResponse> analytics = urlShortenerService.getUrlAnalytics(shortCode);
 
-        if (urlAnalytics.isPresent()) {
-            return ResponseEntity.ok(urlAnalytics.get());
-        } else {
+        if(analytics.isPresent()){
+            return ResponseEntity.ok(analytics.get());
+        }else{
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(Map.of("error", "Short code not found"));
         }
     }
+
+    @DeleteMapping("/{shortCode}")
+    public ResponseEntity<?> deleteUrl(@PathVariable String shortCode){
+        boolean deleted = urlShortenerService.deleteUrl(shortCode);
+
+        if(deleted){
+            return ResponseEntity.ok(Map.of("message","URL deleted successfully"));
+        }else{
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error","Short code not found"));
+        }
+    }
+
 
     private String getClientIp(HttpServletRequest httpRequest) {
         String xForwardedFor = httpRequest.getHeader("X-Forwarded-For");

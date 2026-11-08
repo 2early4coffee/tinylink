@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -191,5 +192,68 @@ public class UrlShortenerService {
     }
 
     public Optional<UrlAnalyticsResponse> getUrlAnalytics(String shortCode) {
+    UrlData urlData = urlMappings.get(shortCode);
+
+        if (urlData==null){
+            return Optional.empty();
+            }
+
+        List<ClickEvent> clicks = clickAnalytics.getOrDefault(shortCode, new ArrayList<>());
+
+        Map<String, Integer> clicksByRefferer = clicks.stream()
+                .filter(click -> click.getReferrer() != null)
+                .collect(Collectors.groupingBy(
+                        ClickEvent::getReferrer,
+                        Collectors.summingInt(e -> 1)));
+
+
+        Map<String, Integer> clicksByHour = clicks.stream()
+                .collect(Collectors.groupingBy(
+                        click -> click.getTimestamp().getHour() + ":00",
+                        Collectors.summingInt(e -> 1)));
+
+
+        Map<String, Integer> clicksByDay = clicks.stream()
+                .collect(Collectors.groupingBy(
+                        click -> click.getTimestamp().toLocalDate().toString(),
+                        Collectors.summingInt(e -> 1)));
+
+        List<ClickEvent> recentClicks = clicks.stream()
+                .sorted((a, b) -> b.getTimestamp().compareTo(a.getTimestamp()))
+                .limit(10)
+                .toList();
+
+        return Optional.of(
+                UrlAnalyticsResponse.builder()
+                        .shortCode(shortCode)
+                        .originalUrl(urlData.getOriginalUrl())
+                        .totalClicks(urlData.getClickCount())
+                        .createdAt(urlData.getCreatedAt())
+                        .recentClicks(recentClicks)
+                        .clicksByReferrer(clicksByRefferer)
+                        .clicksByHour(clicksByHour)
+                        .clicksByDay(clicksByDay)
+                        .build()
+        );
+        }
+
+
+    public boolean deleteUrl(String shortCode) {
+        UrlData urlData = urlMappings.get(shortCode);
+        if (urlData!=null){
+            urlData.setActive(false);
+            deleteCacheUrl(shortCode);
+            log.info("Deleted URL: {}", shortCode);
+            return true;
+        }
+        return false;
+    }
+
+    private void deleteCacheUrl(String shortCode) {
+        try {
+            redisTemplate.delete("url" + shortCode);
+        } catch (Exception e) {
+            log.warn("Failed to delete cached URL for {} : {}", shortCode, e.getMessage());
+        }
     }
 }
