@@ -1,0 +1,29 @@
+cd D:\codebase\tinylink
+@'
+# Secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Backend (Maven, Spring Boot)
+target/
+*.log
+
+# Frontend (Angular, Node)
+node_modules/
+dist/
+.angular/
+out-tsc/
+coverage/
+npm-debug.log*
+*.tsbuildinfo
+'@ | Set-Content .gitignore
