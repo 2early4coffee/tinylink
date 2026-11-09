@@ -5,15 +5,16 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+public class RateLimitData implements Serializable {
 
-
-public class RateLimitData {
+    private static final long serialVersionUID = 1L;
 
     private int minuteCount;
     private int hourCount;
