@@ -1,0 +1,33 @@
+# One image that serves both the Angular app and the Spring Boot API (used for Cloud Run).
+# Build from the repository root:
+#   docker build --platform linux/amd64 -f Dockerfile.cloudrun -t tinylink .
+
+FROM node:24-alpine AS web
+WORKDIR /web
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+FROM maven:3.9.9-eclipse-temurin-17-alpine AS api
+WORKDIR /app
+COPY backend/pom.xml .
+RUN mvn -B dependency:go-offline
+COPY backend/src ./src
+# Spring Boot serves anything in static/ from the web root
+COPY --from=web /web/dist/frontend/browser ./src/main/resources/static
+RUN mvn -B clean package -DskipTests
+
+FROM eclipse-temurin:17-jre-alpine
+WORKDIR /app
+RUN addgroup -S spring && adduser -S spring -G spring
+COPY --from=api --chown=spring:spring /app/target/*.jar app.jar
+USER spring
+
+# No Redis on Cloud Run, so run without the cache
+ENV TINYLINK_CACHE_ENABLED=false \
+    MANAGEMENT_HEALTH_REDIS_ENABLED=false
+
+# Cloud Run sends traffic to port 8080
+EXPOSE 8080
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-XX:+UseSerialGC", "-XX:TieredStopAtLevel=1", "-jar", "app.jar"]

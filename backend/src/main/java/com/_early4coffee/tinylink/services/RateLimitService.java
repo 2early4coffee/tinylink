@@ -1,149 +1,115 @@
 package com._early4coffee.tinylink.services;
 
-
-import com._early4coffee.tinylink.models.RateLimitData;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
+import java.time.Clock;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
+/**
+ * Per-IP fixed-window rate limiter, held in memory.
+ *
+ * This is correct as long as one instance serves traffic, which is how the Cloud Run
+ * deploy is configured (max-instances 1). Each check is atomic per key, and the map
+ * is size-capped so it cannot grow without limit.
+ */
 @Service
-@RequiredArgsConstructor
-@Slf4j
-
 public class RateLimitService {
 
-    private final RedisTemplate<String, Object> redisTemplate;
+    public enum Bucket { SHORTEN, REDIRECT }
 
-    @Value("${tinylink.rate-limit.requests-per-minute}")
-    private int requestsPerMinute;
+    public record Result(boolean allowed, int remaining, long retryAfterSeconds) {
+    }
 
-    @Value("${tinylink.rate-limit.requests-per-hour}")
-    private int requestsPerHour;
+    private static final class Window {
+        long minuteStart;
+        int minuteCount;
+        long hourStart;
+        int hourCount;
 
-    private final ConcurrentHashMap<String, RateLimitData> rateLimitDataConcurrentHashMap = new ConcurrentHashMap<>();
-
-    private static final String REDIS_KEY_PREFIX = "ratelimit:";
-
-    public boolean isAllowed(String clientIp) {
-        String redisKey = REDIS_KEY_PREFIX + clientIp;
-
-        LocalDateTime now = LocalDateTime.now();
-
-        RateLimitData data = getRateLimitDataFromRedis(redisKey);
-
-        if (data == null) {
-            data = rateLimitDataConcurrentHashMap.computeIfAbsent(clientIp, k -> RateLimitData.builder()
-                    .minuteCount(0)
-                    .hourCount(0)
-                    .minuteWindowStart(now)
-                    .hourWindowStart(now)
-                    .build());
+        Window(long now) {
+            this.minuteStart = now;
+            this.hourStart = now;
         }
+    }
 
-        if (isWithinMinuteWindow(data, now)) {
-            if (data.getMinuteCount() >= requestsPerMinute) {
-                log.warn("Minute limit exceeded for {}", clientIp);
-                return false;
+    private static final long MINUTE_MS = 60_000L;
+    private static final long HOUR_MS = 3_600_000L;
+    private static final int SOFT_CAP = 10_000;
+    private static final int HARD_CAP = 50_000;
+
+    private final ConcurrentHashMap<String, Window> windows = new ConcurrentHashMap<>();
+    private final Clock clock;
+    private final int shortenPerMinute;
+    private final int shortenPerHour;
+    private final int redirectPerMinute;
+
+    public RateLimitService(
+            Clock clock,
+            @Value("${tinylink.rate-limit.requests-per-minute}") int shortenPerMinute,
+            @Value("${tinylink.rate-limit.requests-per-hour}") int shortenPerHour,
+            @Value("${tinylink.rate-limit.redirects-per-minute:120}") int redirectPerMinute) {
+        this.clock = clock;
+        this.shortenPerMinute = shortenPerMinute;
+        this.shortenPerHour = shortenPerHour;
+        this.redirectPerMinute = redirectPerMinute;
+    }
+
+    public Result check(Bucket bucket, String clientIp) {
+        long now = clock.millis();
+        int perMinute = bucket == Bucket.SHORTEN ? shortenPerMinute : redirectPerMinute;
+        int perHour = bucket == Bucket.SHORTEN ? shortenPerHour : Integer.MAX_VALUE;
+        Result[] out = new Result[1];
+
+        windows.compute(bucket.name() + ":" + clientIp, (key, existing) -> {
+            Window w = existing == null ? new Window(now) : existing;
+
+            if (now - w.minuteStart >= MINUTE_MS) {
+                w.minuteStart = now;
+                w.minuteCount = 0;
             }
-        } else {
-            data.setMinuteCount(0);
-            data.setMinuteWindowStart(now);
-
-        }
-
-        if (isWithinHourWindow(data, now)) {
-            if (data.getHourCount() >= requestsPerHour) {
-                log.warn("Hour limit exceeded for {}", clientIp);
-                return false;
+            if (now - w.hourStart >= HOUR_MS) {
+                w.hourStart = now;
+                w.hourCount = 0;
             }
-        } else {
-            data.setHourCount(0);
-            data.setHourWindowStart(now);
 
+            if (w.minuteCount >= perMinute) {
+                out[0] = new Result(false, 0, secondsUntil(w.minuteStart + MINUTE_MS, now));
+                return w;
+            }
+            if (w.hourCount >= perHour) {
+                out[0] = new Result(false, 0, secondsUntil(w.hourStart + HOUR_MS, now));
+                return w;
+            }
+
+            w.minuteCount++;
+            w.hourCount++;
+            int remaining = Math.min(perMinute - w.minuteCount,
+                    perHour == Integer.MAX_VALUE ? Integer.MAX_VALUE : perHour - w.hourCount);
+            out[0] = new Result(true, Math.max(0, remaining), 0);
+            return w;
+        });
+
+        trimIfLarge(now);
+        return out[0];
+    }
+
+    int trackedClients() {
+        return windows.size();
+    }
+
+    private void trimIfLarge(long now) {
+        int size = windows.size();
+        if (size <= SOFT_CAP) {
+            return;
         }
-
-        data.setMinuteCount(data.getMinuteCount() + 1);
-        data.setHourCount(data.getHourCount() + 1);
-
-        saveRateLimitDataToRedis(redisKey, data);
-
-        return true;
-    }
-
-    private boolean isWithinHourWindow(RateLimitData data, LocalDateTime now) {
-        return data.getHourWindowStart() != null && ChronoUnit.HOURS.between(
-                data.getHourWindowStart(), now
-        ) < 1;
-    }
-
-    private boolean isWithinMinuteWindow(RateLimitData data, LocalDateTime now) {
-        return data.getMinuteWindowStart() != null && ChronoUnit.MINUTES.between(
-                data.getMinuteWindowStart(), now
-        ) < 1;
-    }
-
-    private void saveRateLimitDataToRedis(String redisKey, RateLimitData data) {
-        try {
-            redisTemplate.opsForValue().set(redisKey, data, 1, TimeUnit.HOURS);
-        } catch (Exception e) {
-            log.warn("Failed to save rate limit data to Redis: {}", e.getMessage());
-        }
-    }
-
-    private RateLimitData getRateLimitDataFromRedis(String redisKey) {
-        try {
-            return (RateLimitData) redisTemplate.opsForValue().get(redisKey);
-        } catch (Exception e) {
-            log.error("Error retrieving rate limit data from Redis for key {}: {}", redisKey, e.getMessage());
-            return null;
+        windows.entrySet().removeIf(e -> now - e.getValue().hourStart >= HOUR_MS);
+        if (windows.size() > HARD_CAP) {
+            windows.clear();
         }
     }
 
-    public int getRemainingRequests(String clientIp) {
-        String redisKey = REDIS_KEY_PREFIX + clientIp;
-        RateLimitData data = getRateLimitDataFromRedis(redisKey);
-
-        if (data == null) {
-            return requestsPerMinute; // If no data, all requests are available
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-
-        if (!isWithinMinuteWindow(data, now)) {
-            return requestsPerMinute; // Reset if outside the minute window
-        }
-
-        return Math.max(0, requestsPerMinute - data.getMinuteCount());
-    }
-
-    public long getTimeUntilReset(String clientIp) {
-        String redisKey = REDIS_KEY_PREFIX + clientIp;
-        RateLimitData data = getRateLimitDataFromRedis(redisKey);
-
-        if (data == null || data.getMinuteWindowStart() == null) {
-            return 0; // No data or no window start means no wait time
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-        if (data.getMinuteCount() >= requestsPerMinute) {
-            LocalDateTime nextMinute = data.getMinuteWindowStart()
-                    .plusMinutes(1);
-            return ChronoUnit.SECONDS.between(now, nextMinute);
-        }
-
-        if (data.getHourCount() >= requestsPerHour) {
-            LocalDateTime nextHour = data.getHourWindowStart()
-                    .plusHours(1);
-            return ChronoUnit.SECONDS.between(now, nextHour);
-        }
-
-        return 0;
+    private static long secondsUntil(long end, long now) {
+        return Math.max(1, (end - now + 999) / 1000);
     }
 }

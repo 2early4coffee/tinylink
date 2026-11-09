@@ -1,6 +1,30 @@
 spring:
   application:
     name: tinylink
+
+  datasource:
+    # Neon (or any Postgres): DB_URL=jdbc:postgresql://HOST/DBNAME?sslmode=require
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/tinylink}
+    username: ${DB_USER:tinylink}
+    password: ${DB_PASSWORD:tinylink}
+    hikari:
+      maximum-pool-size: 4
+      minimum-idle: 0
+      idle-timeout: 30000
+      max-lifetime: 240000
+      connection-timeout: 20000
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      # "update" creates the tables on first start. Switch to "validate" plus Flyway
+      # if the schema starts changing.
+      ddl-auto: update
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
   data:
     redis:
       host: localhost
@@ -15,30 +39,47 @@ spring:
 
 server:
   port: 8080
+  tomcat:
+    threads:
+      max: 40
+  error:
+    include-message: never
+    include-stacktrace: never
 
 tinylink:
   base-url: http://localhost:8080
+  # Time zone used to bucket analytics into hours and days (storage is always UTC)
+  stats-timezone: UTC
   short-code:
     length: 6
     max-attempts: 10
   rate-limit:
     requests-per-minute: 2
     requests-per-hour: 10
+    redirects-per-minute: 120
   cache:
+    # Set to false where there is no Redis (Cloud Run)
+    enabled: true
     ttl-minutes: 30
-  cleanup:
-    interval-minutes: 1
-    expired-urls-batch-size: 100
+  analytics:
+    retention-days: 90
+  client-ip:
+    # 0 = no proxy in front, 1 = one trusted proxy (nginx in Docker Compose, Google on Cloud Run)
+    proxy-hops: 0
 
 management:
+  endpoints:
+    web:
+      exposure:
+        include: health
   endpoint:
     health:
+      show-details: never
       probes:
         enabled: true
 
 logging:
   level:
-    com._early4coffee.tinylink: DEBUG
-    org.springframework.data.redis: DEBUG
+    com._early4coffee.tinylink: ${LOG_LEVEL:INFO}
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"

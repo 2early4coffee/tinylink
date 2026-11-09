@@ -27,3 +27,5 @@ coverage/
 npm-debug.log*
 *.tsbuildinfo
 '@ | Set-Content .gitignore
+# Cloud Run secrets
+deploy/cloudrun/env.yaml

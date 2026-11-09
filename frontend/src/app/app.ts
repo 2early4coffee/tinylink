@@ -10,6 +10,7 @@ type ShortenResponse = {
   originalUrl: string;
   createdAt: string;
   expiresAt: string | null;
+  ownerToken: string;
 };
 
 type UrlStats = {
@@ -19,7 +20,6 @@ type UrlStats = {
   createdAt: string;
   expiresAt: string | null;
   active: boolean;
-  createdBy: string;
 };
 
 @Component({
@@ -44,6 +44,7 @@ export class App {
 
   protected readonly loading = signal(false);
   protected readonly statsLoading = signal(false);
+  protected readonly deleteLoading = signal(false);
   protected readonly error = signal('');
   protected readonly statsError = signal('');
   protected readonly result = signal<ShortenResponse | null>(null);
@@ -60,7 +61,8 @@ export class App {
       // "", ?? => "", || => null
       originalUrl: raw.originalUrl ?? '',
       customAlias: raw.customAlias || null,
-      expiresAt: raw.expiresAt ? this.toLocalDateTime(raw.expiresAt) : null,
+      // datetime-local gives local time without a zone, so convert to an exact UTC instant
+      expiresAt: raw.expiresAt ? new Date(raw.expiresAt).toISOString() : null,
     };
 
     this.loading.set(true);
@@ -98,13 +100,33 @@ export class App {
         this.statsLoading.set(false);
       },
       error: (error) => {
-        this.statsError.set(error?.error.error ?? 'Failed to fetch stats.');
+        this.statsError.set(error?.error?.error ?? 'Failed to fetch stats.');
         this.statsLoading.set(false);
       },
     });
   }
 
-  private toLocalDateTime(expiresAt: string) {
-    return expiresAt.length === 16 ? `${expiresAt}:00` : expiresAt;
+  protected deleteLink(): void {
+    const current = this.result();
+    if (!current) {
+      return;
+    }
+
+    this.deleteLoading.set(true);
+    this.error.set('');
+
+    this.http
+      .delete(`/api/${current.shortCode}`, { headers: { 'X-Owner-Token': current.ownerToken } })
+      .subscribe({
+        next: () => {
+          this.result.set(null);
+          this.stats.set(null);
+          this.deleteLoading.set(false);
+        },
+        error: (error) => {
+          this.error.set(error?.error?.error ?? 'Failed to delete the link.');
+          this.deleteLoading.set(false);
+        },
+      });
   }
 }

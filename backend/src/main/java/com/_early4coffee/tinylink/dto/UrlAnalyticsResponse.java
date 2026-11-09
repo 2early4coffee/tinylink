@@ -1,13 +1,11 @@
 package com._early4coffee.tinylink.dto;
 
-
-import com._early4coffee.tinylink.models.ClickEvent;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -18,12 +16,10 @@ import java.util.Map;
 public class UrlAnalyticsResponse {
     private String shortCode;
     private String originalUrl;
-    private int totalClicks;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-    private List<ClickEvent> recentClicks;
-    private Map<String, Integer> clicksByReferrer;
-    private Map<String, Integer> clicksByHour;
-    private Map<String, Integer> clicksByDay;
-
+    private long totalClicks;
+    private Instant createdAt;
+    private List<RecentClick> recentClicks;
+    private Map<String, Long> clicksByReferrer;
+    private Map<String, Long> clicksByHour;
+    private Map<String, Long> clicksByDay;
 }
