@@ -1,7 +1,27 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tiny-link-postgres
+    environment:
+      POSTGRES_DB: tinylink
+      POSTGRES_USER: tinylink
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tinylink}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tinylink -d tinylink"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     container_name: tiny-link-redis
+    ports:
+      - "127.0.0.1:6379:6379"
     restart: unless-stopped
 
   backend:
@@ -9,13 +29,22 @@ services:
       context: ./backend
     container_name: tiny-link-backend
     environment:
+      DB_URL: jdbc:postgresql://postgres:5432/tinylink
+      DB_USER: tinylink
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-tinylink}
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_TIMEOUT: 2s
       SPRING_DATA_REDIS_CONNECT_TIMEOUT: 2s
       TINYLINK_BASE_URL: http://localhost:4200
+      # nginx puts the real client address in X-Forwarded-For, so trust one hop
+      TINYLINK_CLIENT_IP_PROXY_HOPS: 1
+      TINYLINK_STATS_TIMEZONE: Africa/Nairobi
     depends_on:
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
 
   frontend:
@@ -27,3 +56,6 @@ services:
     ports:
       - "4200:80"
     restart: unless-stopped
+
+volumes:
+  postgres-data:
