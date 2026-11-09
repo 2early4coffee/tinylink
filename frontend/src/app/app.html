@@ -57,6 +57,17 @@
                     <strong>Created:</strong>
                     {{ result.createdAt | date: 'medium' }}
                 </p>
+                <p>
+                    <strong>Owner token:</strong>
+                    <code>{{ result.ownerToken }}</code>
+                </p>
+                <p class="hint">
+                    Save this token now. It is shown only once and is needed to delete this link or read its
+                    detailed analytics.
+                </p>
+                <button type="button" (click)="deleteLink()" [disabled]="deleteLoading()">
+                    {{ deleteLoading() ? 'Deleting...' : 'Delete this link' }}
+                </button>
             </div>
             }
         </article>
@@ -83,7 +94,6 @@
                 <p><strong>Original URL:</strong> {{ stats.originalUrl }}</p>
                 <p><strong>Clicks:</strong> {{ stats.clickCount }}</p>
                 <p><strong>Active:</strong> {{ stats.active ? 'Yes' : 'No' }}</p>
-                <p><strong>Created by:</strong> {{ stats.createdBy }}</p>
             </div>
             }
         </article>
