@@ -5,18 +5,20 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-
 public class ShortenUrlResponse {
 
     private String shortUrl;
     private String shortCode;
     private String originalUrl;
-    private LocalDateTime createdAt;
-    private LocalDateTime expiresAt;
+    private Instant createdAt;
+    private Instant expiresAt;
+
+    /** Shown once, at creation. Needed to read analytics or delete the link. */
+    private String ownerToken;
 }
