@@ -29,6 +29,12 @@ tinylink:
     interval-minutes: 1
     expired-urls-batch-size: 100
 
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
 logging:
   level:
     com._early4coffee.tinylink: DEBUG
