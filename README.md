@@ -88,13 +88,17 @@ Any property can be overridden with an environment variable. The compose file do
 
 ## Local development
 
-Backend, with Postgres and Redis running first (compose publishes them on localhost only):
+The normal compose file does not publish Postgres or Redis, so only the other containers can reach them. To run the backend outside Docker, add the dev override. It publishes them on localhost only, on ports 5433 and 6380 (5432 is often reserved on Windows):
 
 ```powershell
-docker compose up -d postgres redis
+docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d postgres redis
 cd backend
+$env:DB_URL = "jdbc:postgresql://localhost:5433/tinylink"
+$env:SPRING_DATA_REDIS_PORT = "6380"
 .\mvnw.cmd spring-boot:run
 ```
+
+The database user and password default to `tinylink`, which matches compose. If you change `POSTGRES_PORT` or `REDIS_PORT`, change the two variables above to match.
 
 Run the unit tests with `.\mvnw.cmd test`.
 

@@ -1,0 +1,14 @@
+# Optional override for running the backend outside Docker (IDE or mvnw).
+# It publishes Postgres and Redis on localhost, on ports that avoid the ones Windows often reserves.
+#
+#   docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d postgres redis
+#
+# Change the ports with POSTGRES_PORT and REDIS_PORT if these are taken.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6380}:6379"
