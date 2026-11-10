@@ -123,7 +123,8 @@ In Docker, nginx serves the built Angular files and forwards `/api/` requests to
 
 ## Deploying
 
-See [deploy/cloudrun/DEPLOY.md](deploy/cloudrun/DEPLOY.md) for a free-tier Cloud Run deployment.
+- Render (free, no card): [deploy/render/DEPLOY.md](deploy/render/DEPLOY.md)
+- Google Cloud Run: [deploy/cloudrun/DEPLOY.md](deploy/cloudrun/DEPLOY.md) (needs a billing account)
 
 ## Health check
 

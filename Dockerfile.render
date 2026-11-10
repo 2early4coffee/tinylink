@@ -1,0 +1,35 @@
+# Single image (Angular + API) tuned for Render free instances (512 MB RAM, very little CPU).
+# Build from the repository root: docker build -f Dockerfile.render -t tinylink .
+
+FROM node:24-alpine AS web
+WORKDIR /web
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+FROM maven:3.9.9-eclipse-temurin-17-alpine AS api
+WORKDIR /app
+COPY backend/pom.xml .
+RUN mvn -B dependency:go-offline
+COPY backend/src ./src
+# Spring Boot serves anything in static/ from the web root
+COPY --from=web /web/dist/frontend/browser ./src/main/resources/static
+RUN mvn -B clean package -DskipTests
+
+FROM eclipse-temurin:17-jre-alpine
+WORKDIR /app
+RUN addgroup -S spring && adduser -S spring -G spring
+COPY --from=api --chown=spring:spring /app/target/*.jar app.jar
+USER spring
+
+# No Redis here, so run without the cache
+ENV TINYLINK_CACHE_ENABLED=false \
+    MANAGEMENT_HEALTH_REDIS_ENABLED=false
+
+# Render passes the port in $PORT, and application.yaml reads it
+EXPOSE 8080
+
+# Memory plan for a 512 MB instance: 256 MB heap, 128 MB class metadata, small thread stacks.
+# SerialGC and C1-only compilation keep startup light on a very small CPU share.
+ENTRYPOINT ["java", "-Xmx256m", "-Xss512k", "-XX:MaxMetaspaceSize=128m", "-XX:+UseSerialGC", "-XX:TieredStopAtLevel=1", "-jar", "app.jar"]

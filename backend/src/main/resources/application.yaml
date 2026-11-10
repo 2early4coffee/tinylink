@@ -38,7 +38,8 @@ spring:
           min-idle: 0
 
 server:
-  port: 8080
+  # Render and similar hosts tell the app which port to use through PORT
+  port: ${PORT:8080}
   tomcat:
     threads:
       max: 40

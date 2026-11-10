@@ -1,0 +1,32 @@
+# Render Blueprint: Dashboard > New > Blueprint > pick this repository.
+services:
+  - type: web
+    name: tinylink
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile.render
+    dockerContext: .
+    healthCheckPath: /actuator/health/liveness
+    envVars:
+      # Secrets and per-account values: Render asks for these when you create the service
+      - key: DB_URL
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: TINYLINK_BASE_URL
+        sync: false
+      # One trusted proxy in front of the app. Check it with the test in deploy/render/DEPLOY.md
+      - key: TINYLINK_CLIENT_IP_PROXY_HOPS
+        value: "1"
+      - key: TINYLINK_STATS_TIMEZONE
+        value: Africa/Nairobi
+      - key: LOG_LEVEL
+        value: INFO
+      # Opens the port sooner on the tiny CPU. The first request after waking pays the rest of the startup.
+      - key: SPRING_MAIN_LAZY_INITIALIZATION
+        value: "true"
+      - key: SERVER_TOMCAT_THREADS_MAX
+        value: "20"
