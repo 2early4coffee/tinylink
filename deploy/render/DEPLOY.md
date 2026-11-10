@@ -8,8 +8,9 @@ One Docker service serves the Angular app and the API. The database is an extern
   starts on a very small CPU share. Expect one to several minutes for the first visitor.
 - Free instances have 512 MB of RAM. The image is tuned for that (`Dockerfile.render`).
 - Render gives each workspace 750 free instance hours a month, shared by ALL free services in it.
-  One always-on service uses about 744 hours. If you already have another free service in the same
-  workspace, do NOT keep TinyLink awake with a pinging service, or both can be suspended at month end.
+  One always-on service uses about 720 to 744 hours. If you have other free services running in the same
+  workspace, do not keep TinyLink awake around the clock, or all of them can be suspended at month end.
+  See "Keeping it awake" below for a schedule that fits.
 - Render's own free Postgres expires after 30 days, so use an external database (below).
 
 ## 1. Database
@@ -61,6 +62,24 @@ just used the limit, everyone shares one bucket and `TINYLINK_CLIENT_IP_PROXY_HO
 The first deploy needs `SPRING_JPA_HIBERNATE_DDL_AUTO=update` (the default) to create the tables.
 After the first successful start, add `SPRING_JPA_HIBERNATE_DDL_AUTO=none` in the Environment tab.
 The app then skips checking the schema on every start, which saves time on a slow CPU.
+
+## 5. Keeping it awake (optional)
+
+A monitor that calls `https://YOUR-SERVICE.onrender.com/actuator/health/liveness` every 10 minutes stops
+the 15 minute sleep, so visitors skip the long wake-up. Two things limit how you should do it:
+
+- **Render hours.** Awake around the clock costs about 720 to 744 of the 750 free hours, shared by every
+  free service in the workspace. Ping only during the hours people use the site. For example, 07:00 to
+  23:00 Nairobi time is 16 hours a day, about 490 a month, which leaves room for another service.
+  A tool that cannot schedule hours (as far as I know that includes UptimeRobot's free plan) will keep it
+  awake all day. cron-job.org lets you pick the hours and sets any interval from one minute.
+- **Neon hours.** Neon's free plan includes 100 compute hours a month and suspends the database after
+  5 minutes idle. Waking it takes a fraction of a second, so there is nothing to gain from keeping it awake,
+  and a database that never sleeps would use roughly 180 hours and be suspended until the next cycle.
+  The liveness endpoint does not query the database and the connection pool closes idle connections after
+  30 seconds, so these pings leave Neon free to sleep. Never ping an endpoint that reads the database.
+
+Use the GET method and an interval below 15 minutes (10 is a good choice).
 
 ## Troubleshooting
 
